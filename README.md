@@ -167,6 +167,15 @@ Notes:
 - This method will scan in One Pace without interfering with your existing shows.
 - Don't press "Refresh all metadata" in plex as this may mess up your other shows.
 
+### Optional: Custom metadata provider (Cloudflare, no XBMCnfoTVImporter for metadata)
+
+If you want to rely less on legacy Plex plugins, this repo includes a **Plex-compatible custom metadata provider**: NFOs in `One Pace/` are compiled to `catalog.json`, then served from **Cloudflare Workers** (HTTPS + required `POST` matching). GitHub Actions builds the catalog on every push; deploy is optional via secrets.
+
+- **Docs and setup:** [plex-provider/README.md](plex-provider/README.md) (DNS for e.g. `onepaceplex.clevername.top`, KV, Wrangler, PMS registration).
+- **Fork:** [snoopyh42/one-pace-for-plex](https://github.com/snoopyh42/one-pace-for-plex).
+
+You can keep using **XBMCnfoTVImporter** for scanning local NFOs while experimenting with the provider, or move toward provider-based metadata as your Plex version and libraries allow. The plugin path above remains the documented default for maximum compatibility.
+
 ## Acknowledgements
 
 - Thanks to [@tomatoshadow](https://github.com/Tomatoshadow) for creating all the nfo files and original instructions for this plex setup

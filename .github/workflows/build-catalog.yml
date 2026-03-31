@@ -1,0 +1,142 @@
+name: Build catalog & deploy provider
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8.0.0
+        with:
+          enable-cache: true
+
+      - name: Build catalog (stdlib Python via uv)
+        working-directory: plex-provider
+        run: |
+          uv sync --group dev
+          uv run python build_catalog.py --root ..
+
+      - name: Validate catalog (isolated venv; no pip on system Python)
+        working-directory: plex-provider
+        run: uv run python -m check_jsonschema --schemafile catalog.schema.json catalog.json
+
+      - name: Check catalog size (Workers KV single-key limit ~25 MiB)
+        working-directory: plex-provider
+        run: |
+          bytes=$(wc -c < catalog.json)
+          echo "catalog.json size: $bytes bytes"
+          test "$bytes" -lt 24000000
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: catalog-json
+          path: plex-provider/catalog.json
+
+  deploy:
+    needs: build
+    # secrets.* is not valid in job-level `if` (parser error). Gate Cloudflare steps per-step instead.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check Cloudflare secrets
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_KV_NS: ${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ] && [ -n "$CF_KV_NS" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Deploy skipped: set repository secrets CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, and CLOUDFLARE_KV_NAMESPACE_ID."
+          fi
+
+      - uses: astral-sh/setup-uv@v8.0.0
+        if: steps.cf.outputs.ready == 'true'
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v6
+        if: steps.cf.outputs.ready == 'true'
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: plex-provider/cloudflare/package-lock.json
+
+      - name: Build catalog
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: plex-provider
+        run: |
+          uv sync --group dev
+          uv run python build_catalog.py --root ..
+
+      - name: Install Wrangler
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: plex-provider/cloudflare
+        run: npm ci
+
+      - name: Inject Workers custom domain (optional)
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: plex-provider/cloudflare
+        env:
+          HOST_FROM_SECRET: ${{ secrets.PLEX_PROVIDER_HOSTNAME }}
+          HOST_FROM_VAR: ${{ vars.PLEX_PROVIDER_HOSTNAME }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+          import sys
+
+          host = (os.environ.get("HOST_FROM_SECRET") or os.environ.get("HOST_FROM_VAR") or "").strip()
+          if not host:
+              sys.exit(0)
+          if len(host) > 253 or any(c in host for c in ' \n\r\t"\\'):
+              print("::error::PLEX_PROVIDER_HOSTNAME must be a single-line FQDN", file=sys.stderr)
+              sys.exit(1)
+          if not re.fullmatch(r"(?i)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}", host):
+              print("::error::PLEX_PROVIDER_HOSTNAME does not look like a valid FQDN", file=sys.stderr)
+              sys.exit(1)
+
+          path = pathlib.Path("wrangler.toml")
+          text = path.read_text(encoding="utf-8")
+          marker = "\n# --- github-actions: optional custom domain ---\n"
+          text = re.sub(
+              r"\n# --- github-actions: optional custom domain ---\n\[\[routes\]\]\npattern = .+\ncustom_domain = true\n",
+              "\n",
+              text,
+          )
+          block = f"{marker}[[routes]]\npattern = {json.dumps(host)}\ncustom_domain = true\n"
+          path.write_text(text.rstrip() + block + "\n", encoding="utf-8")
+          print("::notice::Custom domain route injected for Wrangler deploy (hostname not printed).")
+          PY
+
+      - name: Publish catalog to KV
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: plex-provider/cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KV_NS_ID: ${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
+        run: npx wrangler kv key put catalog --namespace-id="$KV_NS_ID" --path=../catalog.json
+
+      - name: Deploy Worker
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: plex-provider/cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/snoopyh42/one-pace-for-plex/plex-provider/catalog.schema.json",
+  "title": "One Pace Plex provider catalog",
+  "type": "object",
+  "required": [
+    "catalogVersion",
+    "generatedAt",
+    "identifier",
+    "showRatingKey",
+    "items",
+    "children"
+  ],
+  "properties": {
+    "catalogVersion": { "type": "integer", "const": 1 },
+    "generatedAt": { "type": "string", "minLength": 10 },
+    "identifier": {
+      "type": "string",
+      "pattern": "^tv\\.plex\\.agents\\.custom\\.[a-zA-Z0-9.]+$"
+    },
+    "showRatingKey": { "type": "string", "minLength": 1 },
+    "items": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/item" }
+    },
+    "children": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": [
+        "type",
+        "ratingKey",
+        "key",
+        "guid",
+        "title",
+        "originallyAvailableAt"
+      ],
+      "properties": {
+        "type": { "enum": ["show", "season", "episode"] },
+        "ratingKey": { "type": "string" },
+        "key": { "type": "string", "pattern": "^/library/metadata/" },
+        "guid": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "originallyAvailableAt": { "type": "string" },
+        "year": { "type": "integer" },
+        "index": { "type": "integer" },
+        "parentIndex": { "type": "integer" },
+        "parentRatingKey": { "type": "string" },
+        "parentKey": { "type": "string" },
+        "parentGuid": { "type": "string" },
+        "parentType": { "type": "string" },
+        "parentTitle": { "type": "string" },
+        "grandparentRatingKey": { "type": "string" },
+        "grandparentKey": { "type": "string" },
+        "grandparentGuid": { "type": "string" },
+        "grandparentType": { "type": "string" },
+        "grandparentTitle": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

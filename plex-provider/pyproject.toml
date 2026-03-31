@@ -1,0 +1,10 @@
+[project]
+name = "plex-provider-build"
+version = "0"
+description = "Build tooling for One Pace Plex metadata catalog (no runtime deps)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[dependency-groups]
+dev = ["check-jsonschema>=0.29"]

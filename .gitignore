@@ -13,3 +13,8 @@ One Pace/.DS_Store
 .DS_Store
 .idea
 /tools/.cache/
+
+# Plex provider build artifacts & tooling
+plex-provider/.venv/
+plex-provider/catalog.json
+plex-provider/cloudflare/node_modules/

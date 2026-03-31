@@ -1,0 +1,18 @@
+# KV namespace ID is account-specific. Forks may override via wrangler.toml or CI sed (see README).
+name = "onepace-plex-provider"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+[[kv_namespaces]]
+binding = "CATALOG"
+id = "ccd2310d9e404fef8a008ddfd63788f6"
+
+[vars]
+PROVIDER_TITLE = "One Pace (NFO catalog)"
+
+# Optional Custom Domain: GitHub Actions injects [[routes]] from secret PLEX_PROVIDER_HOSTNAME
+# (or variable PLEX_PROVIDER_HOSTNAME) before deploy. For local deploy, add:
+#   [[routes]]
+#   pattern = "your.subdomain.example.com"
+#   custom_domain = true
+# See https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
