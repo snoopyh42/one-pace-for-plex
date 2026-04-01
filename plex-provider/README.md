@@ -194,14 +194,16 @@ Aligned with Plex’s [Metadata Providers](https://developer.plex.tv/pms/index.h
 | `GET` | `/` | `MediaProvider` discovery document |
 | `GET` | `/art/{basename}` | Poster image from R2 (allowlisted names: `poster.png`, `seasonNN-poster.png`, `season-specials-poster.png`, …) |
 | `GET` | `/library/metadata/{ratingKey}` | Single item; `includeChildren=1` for nested children |
+| `GET` | `/library/metadata/{ratingKey}/images` | `MediaContainer` with `Image[]` (`coverPoster`, `background`) for show / season / episode |
 | `GET` | `/library/metadata/{ratingKey}/children` | Paged children (`X-Plex-Container-Start` / `X-Plex-Container-Size` or query params) |
 | `GET` | `/library/metadata/{ratingKey}/grandchildren` | Show → all episodes (flattened), paged; season → same as children |
 | `POST` | `/library/metadata/matches` | Match show (2), season (3), or episode (4) from JSON body |
 
-Show/season items in the catalog may include a **`thumb`** URL pointing at `/art/…` on the same host. `/library/metadata/{id}/images` (Plex’s multi-image endpoint) is not implemented yet.
+Catalog items include **`thumb`**, optional **`art`** (background), and on episodes **`parentThumb`** / **`grandparentThumb`** as absolute URLs under `/art/…` when `CATALOG_PUBLIC_BASE_URL` is set. The **`/images`** response follows Plex’s guidance: at least **`coverPoster`** and **`background`** entries (see [Plex PMS docs — Image Array](https://developer.plex.tv/pms/#section/MediaProvider-Response/Metadata-Object)). If Plex still shows default posters, confirm this provider is **before** TMDB/TVDB in the library agent list (or disable their artwork), then refresh metadata.
 
 ## Troubleshooting
 
 - **503 from Worker:** KV key `catalog` missing or invalid JSON — re-run KV `put` after `build_catalog.py`.
 - **Plex won’t register:** Check TLS, correct public URL, and that `GET /` returns valid `MediaProvider` JSON.
+- **Posters / season art missing after refresh:** Plex expects **`/images`** to include both **`coverPoster`** and **`background`**. Put this provider **above** TMDB/TVDB (or similar) in **Settings → Agents** for the library if their posters keep winning. Use **Refresh Metadata** after KV deploy. Confirm `GET …/season-1/images` returns at least two `Image` objects. (`curl -I` is **HEAD**; use `curl -sS` without `-I` for JSON.)
 - **Catalog too large for KV:** Single key limit is about **25 MiB**; the workflow fails the build if the file exceeds a safe threshold. If you outgrow that, shard by season and extend the Worker.

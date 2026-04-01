@@ -272,6 +272,18 @@ def build_catalog(repo_root: Path, public_base_url: str | None = None) -> dict[s
     rows = collect_episodes(one_pace)
     ep_keys = assign_rating_keys(rows)
 
+    show_thumb_url: str | None = None
+    if public_base_url and (one_pace / "poster.png").is_file():
+        show_thumb_url = _thumb_art_url(public_base_url, "poster.png")
+
+    def season_thumb_url(snum: int) -> str | None:
+        if not public_base_url:
+            return None
+        pb = _season_poster_basename(snum)
+        if (one_pace / pb).is_file():
+            return _thumb_art_url(public_base_url, pb)
+        return None
+
     episode_by_key: dict[str, dict[str, Any]] = {}
     children_season: dict[int, list[str]] = {s: [] for s in season_meta}
 
@@ -288,7 +300,7 @@ def build_catalog(repo_root: Path, public_base_url: str | None = None) -> dict[s
             children_season[r.season] = []
 
         guid = f"{PROVIDER_ID}://episode/{rk}"
-        episode_by_key[rk] = {
+        ep: dict[str, Any] = {
             "type": "episode",
             "ratingKey": rk,
             "key": f"/library/metadata/{rk}",
@@ -309,6 +321,12 @@ def build_catalog(repo_root: Path, public_base_url: str | None = None) -> dict[s
             "grandparentType": "show",
             "grandparentTitle": show_title,
         }
+        st_u = season_thumb_url(r.season)
+        if st_u:
+            ep["parentThumb"] = st_u
+        if show_thumb_url:
+            ep["grandparentThumb"] = show_thumb_url
+        episode_by_key[rk] = ep
         children_season.setdefault(r.season, []).append(rk)
 
     for s in children_season:
@@ -346,6 +364,11 @@ def build_catalog(repo_root: Path, public_base_url: str | None = None) -> dict[s
             pb = _season_poster_basename(snum)
             if (one_pace / pb).is_file():
                 smeta["thumb"] = _thumb_art_url(public_base_url, pb)
+        if show_thumb_url:
+            smeta["parentThumb"] = show_thumb_url
+            smeta["art"] = show_thumb_url
+        elif smeta.get("thumb"):
+            smeta["art"] = smeta["thumb"]
         season_by_key[rk] = smeta
 
     show_guid = f"{PROVIDER_ID}://show/{SHOW_RATING_KEY}"
@@ -359,8 +382,12 @@ def build_catalog(repo_root: Path, public_base_url: str | None = None) -> dict[s
         "originallyAvailableAt": "2013-01-01",
         "year": 2013,
     }
-    if public_base_url and (one_pace / "poster.png").is_file():
-        show_obj["thumb"] = _thumb_art_url(public_base_url, "poster.png")
+    if show_thumb_url:
+        show_obj["thumb"] = show_thumb_url
+    if public_base_url and (one_pace / "poster-2.png").is_file():
+        show_obj["art"] = _thumb_art_url(public_base_url, "poster-2.png")
+    elif show_thumb_url:
+        show_obj["art"] = show_thumb_url
 
     children_show = [season_meta[s]["ratingKey"] for s in season_keys_ordered]
 

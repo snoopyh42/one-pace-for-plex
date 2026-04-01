@@ -18,6 +18,9 @@ interface Item {
   guid: string;
   title: string;
   thumb?: string;
+  art?: string;
+  parentThumb?: string;
+  grandparentThumb?: string;
   summary?: string;
   originallyAvailableAt: string;
   year?: number;
@@ -160,6 +163,10 @@ function childrenObject(
       if (y !== undefined) row.year = y;
       if (it.parentTitle) row.parentTitle = it.parentTitle;
       if (it.parentGuid) row.parentGuid = it.parentGuid;
+      if (it.thumb) row.thumb = it.thumb;
+      if (it.art) row.art = it.art;
+      if (it.parentThumb) row.parentThumb = it.parentThumb;
+      if (it.grandparentThumb) row.grandparentThumb = it.grandparentThumb;
       md.push(row);
     } else {
       md.push(cloneItem(it));
@@ -198,6 +205,54 @@ function grandchildrenKeys(catalog: Catalog, ratingKey: string): string[] {
     return out;
   }
   return [];
+}
+
+/**
+ * Plex docs: Image[] should include at least coverPoster and background for best client support.
+ * @see https://developer.plex.tv/pms/ Metadata Object → Image Array
+ */
+function plexImagesForItem(catalog: Catalog, item: Item): { type: string; url: string }[] {
+  const out: { type: string; url: string }[] = [];
+  const show = catalog.items[catalog.showRatingKey];
+
+  if (item.type === "show") {
+    const poster = item.thumb;
+    const bg = item.art ?? item.thumb;
+    if (poster) out.push({ type: "coverPoster", url: poster });
+    if (bg) out.push({ type: "background", url: bg });
+    return out;
+  }
+
+  if (item.type === "season") {
+    const cover = item.thumb ?? item.parentThumb;
+    const bg =
+      item.art ??
+      item.parentThumb ??
+      show?.art ??
+      show?.thumb ??
+      item.thumb;
+    if (cover) out.push({ type: "coverPoster", url: cover });
+    if (bg) out.push({ type: "background", url: bg });
+    return out;
+  }
+
+  if (item.type === "episode") {
+    const seasonKey = item.parentRatingKey;
+    const season = seasonKey ? catalog.items[seasonKey] : undefined;
+    const cover =
+      item.parentThumb ?? (season?.type === "season" ? season.thumb : undefined);
+    const bg =
+      item.grandparentThumb ??
+      show?.art ??
+      show?.thumb ??
+      (season?.type === "season" ? season.parentThumb : undefined) ??
+      cover;
+    if (cover) out.push({ type: "coverPoster", url: cover });
+    if (bg) out.push({ type: "background", url: bg });
+    return out;
+  }
+
+  return out;
 }
 
 function mediaProviderJson(catalog: Catalog, title: string): Record<string, unknown> {
@@ -402,6 +457,39 @@ export default {
       const matches = matchMetadata(catalog, body);
       const mc = mediaContainer(catalog.identifier, matches);
       return new Response(JSON.stringify(mc), { headers: cors(req, JSON_HDR) });
+    }
+
+    const imagesRe = /^\/library\/metadata\/([^/]+)\/images$/;
+    const imagesM = path.match(imagesRe);
+    if (imagesM && (req.method === "GET" || req.method === "HEAD")) {
+      const id = imagesM[1];
+      const item = catalog.items[id];
+      if (!item) {
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: cors(req, JSON_HDR),
+        });
+      }
+      const Image = plexImagesForItem(catalog, item);
+      const body = JSON.stringify({
+        MediaContainer: {
+          offset: 0,
+          totalSize: Image.length,
+          identifier: catalog.identifier,
+          size: Image.length,
+          Image,
+        },
+      });
+      if (req.method === "HEAD") {
+        return new Response(null, {
+          status: 200,
+          headers: cors(req, {
+            ...JSON_HDR,
+            "Content-Length": String(new TextEncoder().encode(body).length),
+          }),
+        });
+      }
+      return new Response(body, { headers: cors(req, JSON_HDR) });
     }
 
     const childRe = /^\/library\/metadata\/([^/]+)\/(children|grandchildren)$/;
