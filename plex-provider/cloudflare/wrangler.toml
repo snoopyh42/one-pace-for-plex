@@ -7,6 +7,11 @@ compatibility_date = "2024-11-01"
 binding = "CATALOG"
 id = "ccd2310d9e404fef8a008ddfd63788f6"
 
+# R2 bucket for season/show poster PNGs (forks: create bucket + set name here).
+[[r2_buckets]]
+binding = "ART"
+bucket_name = "onepace-plex-posters"
+
 [vars]
 PROVIDER_TITLE = "One Pace (NFO catalog)"
 

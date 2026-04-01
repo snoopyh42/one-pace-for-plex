@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,16 @@ def _parse_int(s: str, default: int = 0) -> int:
         return int(s.strip())
     except (ValueError, AttributeError):
         return default
+
+
+def _season_poster_basename(season_number: int) -> str:
+    if season_number == 0:
+        return "season-specials-poster.png"
+    return f"season{season_number:02d}-poster.png"
+
+
+def _thumb_art_url(public_base_url: str, basename: str) -> str:
+    return f"{public_base_url.rstrip('/')}/art/{basename}"
 
 
 def _normalize_season_display_title(title: str, season_number: int) -> str:
@@ -225,7 +236,7 @@ def assign_rating_keys(rows: list[EpisodeRow]) -> dict[str, EpisodeRow]:
     return key_to_row
 
 
-def build_catalog(repo_root: Path) -> dict[str, Any]:
+def build_catalog(repo_root: Path, public_base_url: str | None = None) -> dict[str, Any]:
     one_pace = repo_root / "One Pace"
     if not one_pace.is_dir():
         raise FileNotFoundError(f"Missing {one_pace}")
@@ -331,6 +342,10 @@ def build_catalog(repo_root: Path) -> dict[str, Any]:
             "parentTitle": show_title,
             "originallyAvailableAt": "1970-01-01",
         }
+        if public_base_url:
+            pb = _season_poster_basename(snum)
+            if (one_pace / pb).is_file():
+                smeta["thumb"] = _thumb_art_url(public_base_url, pb)
         season_by_key[rk] = smeta
 
     show_guid = f"{PROVIDER_ID}://show/{SHOW_RATING_KEY}"
@@ -344,6 +359,8 @@ def build_catalog(repo_root: Path) -> dict[str, Any]:
         "originallyAvailableAt": "2013-01-01",
         "year": 2013,
     }
+    if public_base_url and (one_pace / "poster.png").is_file():
+        show_obj["thumb"] = _thumb_art_url(public_base_url, "poster.png")
 
     children_show = [season_meta[s]["ratingKey"] for s in season_keys_ordered]
 
@@ -381,13 +398,21 @@ def main() -> int:
         default=None,
         help="Output path (default: plex-provider/catalog.json)",
     )
+    ap.add_argument(
+        "--public-base-url",
+        type=str,
+        default=None,
+        help="HTTPS origin for poster URLs (no trailing slash), e.g. https://provider.example.com. "
+        "Also read from env CATALOG_PUBLIC_BASE_URL if unset.",
+    )
     args = ap.parse_args()
     script_dir = Path(__file__).resolve().parent
     repo_root = args.root or script_dir.parent
     out_path = args.out or (script_dir / "catalog.json")
+    pub = (args.public_base_url or os.environ.get("CATALOG_PUBLIC_BASE_URL", "")).strip() or None
 
     try:
-        catalog = build_catalog(repo_root)
+        catalog = build_catalog(repo_root, public_base_url=pub)
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1

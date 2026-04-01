@@ -5,6 +5,7 @@
 
 export interface Env {
   CATALOG: KVNamespace;
+  ART: R2Bucket;
   PROVIDER_TITLE: string;
 }
 
@@ -16,6 +17,7 @@ interface Item {
   key: string;
   guid: string;
   title: string;
+  thumb?: string;
   summary?: string;
   originallyAvailableAt: string;
   year?: number;
@@ -43,6 +45,18 @@ interface Catalog {
 }
 
 const JSON_HDR = { "Content-Type": "application/json; charset=utf-8" };
+
+/** R2 object keys synced from One Pace/*poster*.png (see build workflow). */
+const ART_BASENAME_RE =
+  /^(?:poster\.png|poster-2\.png|season-specials-poster\.png|season\d{2}-poster\.png)$/;
+
+function contentTypeForArt(basename: string): string {
+  const lower = basename.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+  return "application/octet-stream";
+}
 
 const cors = (req: Request, base: Record<string, string> = {}): Record<string, string> => {
   const o = req.headers.get("Origin");
@@ -310,6 +324,56 @@ export default {
       return new Response(null, { status: 204, headers: cors(req) });
     }
 
+    const url = new URL(req.url);
+    const path = url.pathname.replace(/\/$/, "") || "/";
+
+    const artM = path.match(/^\/art\/([^/]+)$/);
+    if (artM && (req.method === "GET" || req.method === "HEAD")) {
+      let basename = artM[1];
+      try {
+        basename = decodeURIComponent(basename);
+      } catch {
+        /* keep raw segment */
+      }
+      if (!ART_BASENAME_RE.test(basename)) {
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: cors(req, JSON_HDR),
+        });
+      }
+      if (req.method === "HEAD") {
+        const meta = await env.ART.head(basename);
+        if (!meta) {
+          return new Response(JSON.stringify({ error: "not found" }), {
+            status: 404,
+            headers: cors(req, JSON_HDR),
+          });
+        }
+        return new Response(null, {
+          status: 200,
+          headers: cors(req, {
+            "Content-Type": contentTypeForArt(basename),
+            "Cache-Control": "public, max-age=604800",
+            "Content-Length": String(meta.size),
+          }),
+        });
+      }
+      const obj = await env.ART.get(basename);
+      if (!obj) {
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: cors(req, JSON_HDR),
+        });
+      }
+      return new Response(obj.body, {
+        status: 200,
+        headers: cors(req, {
+          "Content-Type": contentTypeForArt(basename),
+          "Cache-Control": "public, max-age=604800",
+        }),
+      });
+    }
+
     const catalog = await getCatalog(env);
     if (!catalog) {
       return new Response(JSON.stringify({ error: "catalog missing; upload KV key catalog" }), {
@@ -317,9 +381,6 @@ export default {
         headers: cors(req, JSON_HDR),
       });
     }
-
-    const url = new URL(req.url);
-    const path = url.pathname.replace(/\/$/, "") || "/";
 
     if (path === "/" && req.method === "GET") {
       const title = env.PROVIDER_TITLE || "One Pace";

@@ -49,6 +49,7 @@
         "key": { "type": "string", "pattern": "^/library/metadata/" },
         "guid": { "type": "string" },
         "title": { "type": "string" },
+        "thumb": { "type": "string", "minLength": 1 },
         "summary": { "type": "string" },
         "originallyAvailableAt": { "type": "string" },
         "year": { "type": "integer" },
