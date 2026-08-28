@@ -150,7 +150,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           KV_NS_ID: ${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
-        run: npx wrangler kv key put catalog --namespace-id="$KV_NS_ID" --path=../catalog.json
+        run: npx wrangler kv key put catalog --namespace-id="$KV_NS_ID" --path=../catalog.json --remote
 
       - name: Detect poster / R2 config changes
         if: steps.cf.outputs.ready == 'true'
@@ -184,7 +184,7 @@ jobs:
           shopt -s nullglob
           for f in ../../One\ Pace/*poster*.png; do
             base="$(basename "$f")"
-            npx wrangler r2 object put "${R2_BUCKET}/${base}" --file="$f"
+            npx wrangler r2 object put "${R2_BUCKET}/${base}" --file="$f" --remote
           done
 
       - name: Deploy Worker
